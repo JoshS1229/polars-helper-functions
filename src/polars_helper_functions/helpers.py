@@ -3,6 +3,114 @@
 from __future__ import annotations
 
 
+def save_schema(schema_or_frame, schema_path, infer_schema_length=None):
+    """
+    Save a Polars schema as JSON using dtype string representations.
+
+    Parameters
+    ----------
+    schema_or_frame : Mapping[str, polars.DataType] | polars.Schema | polars.DataFrame | polars.LazyFrame
+        Schema-like object to persist. This can be:
+        - output of `collect_schema()`
+        - a schema mapping
+        - a `DataFrame`
+        - a `LazyFrame`
+    schema_path : str | pathlib.Path
+        JSON destination path.
+    infer_schema_length : int | None, default None
+        Included for API compatibility with schema-inference workflows.
+        This parameter is currently not used when the input is already a
+        DataFrame/LazyFrame/schema object.
+    """
+    import json
+    from pathlib import Path
+
+    import polars as pl
+
+    if isinstance(schema_or_frame, pl.LazyFrame):
+        schema = schema_or_frame.collect_schema()
+    elif isinstance(schema_or_frame, pl.DataFrame):
+        schema = schema_or_frame.schema
+    elif hasattr(schema_or_frame, "items"):
+        schema = schema_or_frame
+    else:
+        raise TypeError(
+            "`schema_or_frame` must be a Polars DataFrame/LazyFrame or a schema-like mapping."
+        )
+
+    _ = infer_schema_length  # reserved for compatibility with scan/read workflows
+
+    schema_path = Path(schema_path)
+    schema_path.parent.mkdir(parents=True, exist_ok=True)
+
+    schema_to_save = {col: repr(dtype) for col, dtype in schema.items()}
+
+    with schema_path.open("w", encoding="utf-8") as f:
+        json.dump(schema_to_save, f, indent=2)
+
+
+def load_saved_schema(schema_path):
+    """
+    Load a saved schema JSON and return a Polars-compatible schema mapping.
+
+    Parameters
+    ----------
+    schema_path : str | pathlib.Path
+        Path to JSON schema created by `save_schema`.
+
+    Returns
+    -------
+    dict[str, polars.DataType]
+        Schema dictionary that can be passed to `scan_csv(..., schema=...)`
+        or `read_csv(..., schema=...)`.
+    """
+    import json
+    from pathlib import Path
+
+    import polars as pl
+
+    schema_path = Path(schema_path)
+    with schema_path.open(encoding="utf-8") as f:
+        saved_schema = json.load(f)
+
+    namespace = {
+        name: getattr(pl, name)
+        for name in (
+            "Int8",
+            "Int16",
+            "Int32",
+            "Int64",
+            "UInt8",
+            "UInt16",
+            "UInt32",
+            "UInt64",
+            "Float32",
+            "Float64",
+            "String",
+            "Boolean",
+            "Date",
+            "Time",
+            "Datetime",
+            "Duration",
+            "Binary",
+            "Decimal",
+            "Categorical",
+            "Enum",
+            "Object",
+            "Null",
+            "Unknown",
+            "List",
+            "Array",
+            "Struct",
+        )
+    }
+
+    return {
+        col: eval(dtype_repr, {"__builtins__": {}}, namespace)
+        for col, dtype_repr in saved_schema.items()
+    }
+
+
 def show_unique(lf, cols, mode: str = "column"):
     """
     Show unique values from one or more columns in a Polars LazyFrame.

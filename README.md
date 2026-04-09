@@ -8,6 +8,7 @@ Reusable helper utilities for common Polars workflows, including:
 - Cleaning column names into snake_case
 - Cleaning/normalizing string columns
 - Checking merge quality with a Stata-style merge summary
+- Saving/loading Polars schemas to/from JSON for reproducible imports
 
 ## Installation
 
@@ -29,7 +30,14 @@ pip install .
 
 ```python
 import polars as pl
-from polars_helper_functions import clean_names, clean_strings, show_unique, check_merge
+from polars_helper_functions import (
+    check_merge,
+    clean_names,
+    clean_strings,
+    load_saved_schema,
+    save_schema,
+    show_unique,
+)
 
 lf = pl.DataFrame({"Customer ID": [1, 2, 2], "State": ["CA", "CA", "NY"]}).lazy()
 show_unique(lf, ["State"])
@@ -37,6 +45,11 @@ show_unique(lf, ["State"])
 # Clean names
 cleaned = clean_names(pl.DataFrame({"Customer ID": [1], "Order-Date": ["2026-01-01"]}))
 print(cleaned.columns)  # ['customer_id', 'order_date']
+
+# Save/load schema directly from LazyFrame/DataFrame/schema
+lf = pl.scan_csv("data/*.csv", infer_schema_length=None)
+save_schema(lf, "intermediate/schema.json", infer_schema_length=None)
+loaded_schema = load_saved_schema("intermediate/schema.json")
 ```
 
 ## API
@@ -58,6 +71,12 @@ Standardize string columns with optional aggressive normalization.
 
 ### `check_merge(left, right, on=None, left_on=None, right_on=None, view_unmatched=False)`
 Print merge diagnostics based on unique keys and optionally send unmatched keys to Spyder.
+
+### `save_schema(schema_or_frame, schema_path, infer_schema_length=None)`
+Save a schema, DataFrame, or LazyFrame to a JSON schema file.
+
+### `load_saved_schema(schema_path)`
+Load a schema JSON file and return a `dict[str, pl.DataType]` usable in Polars `schema=`.
 
 ## Using this package in Spyder
 
