@@ -35,6 +35,7 @@ from polars_helper_functions import (
     clean_names,
     clean_strings,
     load_saved_schema,
+    sample_lazyframe,
     save_schema,
     show_unique,
 )
@@ -50,6 +51,10 @@ print(cleaned.columns)  # ['customer_id', 'order_date']
 lf = pl.scan_csv("data/*.csv", infer_schema_length=None)
 save_schema(lf, "intermediate/schema.json", infer_schema_length=None)
 loaded_schema = load_saved_schema("intermediate/schema.json")
+
+# Deterministic pseudo-random sample from LazyFrame
+lf_base = pl.scan_parquet("data/base.parquet")
+lf_base_sample = sample_lazyframe(lf_base, n_rows=1_000, seed=42)
 ```
 
 ## API
@@ -71,6 +76,9 @@ Standardize string columns with optional aggressive normalization.
 
 ### `check_merge(left, right, on=None, left_on=None, right_on=None, view_unmatched=False)`
 Print merge diagnostics based on unique keys and optionally send unmatched keys to Spyder.
+
+### `sample_lazyframe(lf, n_rows, seed=0)`
+Return a deterministic pseudo-random sample from a `LazyFrame` as a `DataFrame`.
 
 ### `save_schema(schema_or_frame, schema_path, infer_schema_length=None)`
 Save a schema, DataFrame, or LazyFrame to a JSON schema file.
