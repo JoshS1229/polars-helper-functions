@@ -336,10 +336,16 @@ def clean_strings(df, cols=None, normalize: bool = False):
     import polars.selectors as cs
 
     if cols is None:
-        cols = cs.string()
+        expr = cs.string()
+    elif isinstance(cols, str):
+        expr = pl.col(cols)
+    elif isinstance(cols, (list, tuple)):
+        expr = pl.col(list(cols))
+    else:
+        expr = cols
 
     expr = (
-        pl.col(cols)
+        expr
         .str.normalize("NFKC")
         .str.replace_all(r"[\x00-\x1F\x7F]", "")
         .str.replace_all(r"\s+", " ")
@@ -347,7 +353,12 @@ def clean_strings(df, cols=None, normalize: bool = False):
     )
 
     if normalize:
-        expr = expr.str.to_lowercase().str.replace_all(r"\s+", "").str.replace_all(r"[^\w]", "")
+        expr = (
+            expr
+            .str.to_lowercase()
+            .str.replace_all(r"\s+", "")
+            .str.replace_all(r"[^\w]", "")
+        )
 
     return df.with_columns(expr)
 
