@@ -3,6 +3,72 @@
 from __future__ import annotations
 
 
+def sample_lazyframe(
+    lf,
+    n_rows: int,
+    seed: int = 0,
+):
+    """
+    Return a deterministic pseudo-random sample from a Polars LazyFrame.
+
+    The function uses a fast *systematic sampling* strategy on a temporary
+    row index to avoid collecting the full dataset before sampling:
+
+    1) lazily compute total row count
+    2) derive a stride so at least `n_rows` candidates are selected
+    3) choose a seed-based starting offset for reproducibility
+    4) filter rows where `row_index % stride == offset`
+    5) materialize only the requested sample size
+
+    Parameters
+    ----------
+    lf : polars.LazyFrame
+        Input LazyFrame to sample from.
+    n_rows : int
+        Number of rows to return in the sampled output.
+    seed : int, default 0
+        Seed used to select the deterministic starting offset.
+
+    Returns
+    -------
+    polars.DataFrame
+        Sampled DataFrame with up to `n_rows` rows (exactly `n_rows` when
+        available).
+
+    Examples
+    --------
+    >>> import polars as pl
+    >>> lf_base = pl.scan_parquet("data/base.parquet")
+    >>> lf_base_sample = sample_lazyframe(lf_base, n_rows=1_000, seed=42)
+    >>> lf_base_sample.shape
+    (1000, lf_base.collect_schema().len())
+    """
+    import polars as pl
+
+    if not isinstance(lf, pl.LazyFrame):
+        raise TypeError("`lf` must be a polars.LazyFrame.")
+    if n_rows <= 0:
+        raise ValueError("`n_rows` must be a positive integer.")
+
+    total_rows = lf.select(pl.len().alias("_n")).collect().item()
+    if total_rows <= n_rows:
+        return lf.collect()
+
+    # Systematic sample with a deterministic offset:
+    # fast (no full in-memory collect) and reasonably representative across
+    # the full scan order while still being reproducible with `seed`.
+    stride = max(total_rows // n_rows, 1)
+    offset = seed % stride
+
+    return (
+        lf.with_row_index("__row_index")
+        .filter((pl.col("__row_index") % stride) == offset)
+        .drop("__row_index")
+        .limit(n_rows)
+        .collect()
+    )
+
+
 def save_schema(schema_or_frame, schema_path, infer_schema_length=None):
     """
     Save a Polars schema as JSON using dtype string representations.
