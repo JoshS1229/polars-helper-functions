@@ -28,39 +28,61 @@ pip install .
 
 ## Quick usage
 
+### Import conventions
+
+Use the package namespace (`phf`) for **transformation** helpers, and import
+**inspection** helpers directly by function name.
+
 ```python
 import polars as pl
-from polars_helper_functions import (
-    check_merge,
-    clean_names,
-    clean_strings,
-    load_saved_schema,
-    sample_lazyframe,
-    save_schema,
-    show_unique,
-)
+import polars_helper_functions as phf
+from polars_helper_functions import check_merge, show_unique, tab, view
+```
+
+This keeps call sites clear:
+
+- `phf.clean_names(...)`, `phf.clean_strings(...)`, `phf.save_schema(...)`, etc. for transformations/workflow helpers
+- `show_unique(...)`, `check_merge(...)`, `tab(...)`, `view(...)` for inspection/diagnostics
+
+### Example
+
+```python
+import polars as pl
+import polars_helper_functions as phf
+from polars_helper_functions import check_merge, show_unique, tab, view
 
 lf = pl.DataFrame({"Customer ID": [1, 2, 2], "State": ["CA", "CA", "NY"]}).lazy()
 show_unique(lf, ["State"])
 
 # Clean names
-cleaned = clean_names(pl.DataFrame({"Customer ID": [1], "Order-Date": ["2026-01-01"]}))
+cleaned = phf.clean_names(pl.DataFrame({"Customer ID": [1], "Order-Date": ["2026-01-01"]}))
 print(cleaned.columns)  # ['customer_id', 'order_date']
+
+# Clean/normalize strings
+cleaned = phf.clean_strings(cleaned)
 
 # Save/load schema directly from LazyFrame/DataFrame/schema
 lf = pl.scan_csv("data/*.csv", infer_schema_length=None)
-save_schema(lf, "intermediate/schema.json", infer_schema_length=None)
-loaded_schema = load_saved_schema("intermediate/schema.json")
+phf.save_schema(lf, "intermediate/schema.json", infer_schema_length=None)
+loaded_schema = phf.load_saved_schema("intermediate/schema.json")
 
 # Deterministic pseudo-random sample from LazyFrame
 lf_base = pl.scan_parquet("data/base.parquet")
-lf_base_sample = sample_lazyframe(lf_base, n_rows=1_000, seed=42)
+lf_base_sample = phf.sample_lazyframe(lf_base, n_rows=1_000, seed=42)
+
+# Frequency table and Spyder view are inspection helpers
+df = pl.DataFrame({"state": ["CA", "CA", "NY"], "segment": ["A", "B", "A"]})
+print(tab(df, ["state", "segment"]))
+view(df, name="my_df")
 ```
 
 ## API
 
 ### `show_unique(lf, cols, mode="column")`
 Show unique values from one or more columns in a `LazyFrame`.
+
+### `tab(df, col)`
+Create one-way or multi-way frequency tables with proportions.
 
 ### `view(df, n=100, name="a1_VIEW_DF")`
 Send a Polars DataFrame/LazyFrame to Spyder Variable Explorer by assigning it in `__main__`.
@@ -94,15 +116,16 @@ Load a schema JSON file and return a `dict[str, pl.DataType]` usable in Polars `
    ```python
    import polars as pl
    import polars_helper_functions as phf
+   from polars_helper_functions import check_merge, show_unique, tab, view
    ```
 
-3. Use helper functions directly:
+3. Use transformation helpers via `phf`, and inspection helpers directly:
 
    ```python
    df = pl.DataFrame({" Name ": [" Alice  ", "Bob"], "Zip-Code": [" 12345", "12345 "]})
    df = phf.clean_names(df)
    df = phf.clean_strings(df)
-   phf.view(df, name="my_clean_df")
+   view(df, name="my_clean_df")
    ```
 
 4. Check **Variable Explorer** in Spyder for `my_clean_df`.
