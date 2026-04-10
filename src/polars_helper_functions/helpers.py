@@ -203,6 +203,51 @@ def show_unique(lf, cols, mode: str = "column"):
         print(result)
 
 
+def tab(df, col):
+    """
+    Create a one-way or multi-way frequency table with proportions.
+
+    Parameters
+    ----------
+    df : polars.DataFrame | polars.LazyFrame
+        Input frame to tabulate.
+    col : str | list[str]
+        Grouping column name(s).
+
+    Returns
+    -------
+    polars.DataFrame | polars.LazyFrame
+        Frequency table sorted by the grouping column(s). Returns the same
+        frame type as the input.
+    """
+    import polars as pl
+
+    if not isinstance(df, (pl.DataFrame, pl.LazyFrame)):
+        raise TypeError("`df` must be a polars.DataFrame or polars.LazyFrame.")
+
+    group_cols = [col] if isinstance(col, str) else list(col)
+    if not group_cols:
+        raise ValueError("`col` must contain at least one column name.")
+
+    available_cols = df.columns if isinstance(df, pl.DataFrame) else df.collect_schema().names()
+    missing = [c for c in group_cols if c not in available_cols]
+    if missing:
+        missing_cols = ", ".join(missing)
+        raise ValueError(f"Column(s) not found in input: {missing_cols}")
+
+    table = (
+        df.group_by(group_cols)
+        .agg(pl.len().alias("Frequency"))
+        .with_columns((pl.col("Frequency") / pl.col("Frequency").sum()).alias("Proportion"))
+        .sort(group_cols)
+    )
+
+    if isinstance(df, pl.LazyFrame):
+        return table.collect().lazy()
+
+    return table
+
+
 def view(df, n: int | None = 100, name: str = "a1_VIEW_DF"):
     """
     Send a Polars DataFrame/LazyFrame to Spyder Variable Explorer.
