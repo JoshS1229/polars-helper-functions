@@ -243,7 +243,7 @@ def tab(df, col):
     )
 
     if isinstance(df, pl.LazyFrame):
-        return table.collect().lazy()
+        return table.collect()
 
     return table
 
