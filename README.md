@@ -36,7 +36,7 @@ Use the package namespace (`phf`) for **transformation** helpers, and import
 ```python
 import polars as pl
 import polars_helper_functions as phf
-from polars_helper_functions import check_merge, show_unique, tab, view
+from polars_helper_functions import check_merge, show_unique, tab, view, sample_lazyframe
 ```
 
 This keeps call sites clear:
