@@ -8,6 +8,7 @@ from .helpers import (
     sample_lazyframe,
     save_schema,
     show_unique,
+    tab,
     view,
     write_excel_polars,
 )
@@ -19,6 +20,7 @@ __all__ = [
     "sample_lazyframe",
     "save_schema",
     "load_saved_schema",
+    "tab",
     "clean_names",
     "clean_strings",
     "check_merge",
