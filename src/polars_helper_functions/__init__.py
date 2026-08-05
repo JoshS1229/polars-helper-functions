@@ -9,13 +9,11 @@ from .helpers import (
     save_schema,
     show_unique,
     tab,
-    view,
     write_excel_polars,
 )
 
 __all__ = [
     "show_unique",
-    "view",
     "write_excel_polars",
     "sample_lazyframe",
     "save_schema",
