@@ -1,4 +1,4 @@
-"""Helper functions for working with Polars and Spyder."""
+"""Helper functions for working with Polars."""
 
 from __future__ import annotations
 
@@ -248,30 +248,6 @@ def tab(df, col):
     return table
 
 
-def view(df, n: int | None = 100, name: str = "a1_VIEW_DF"):
-    """
-    Send a Polars DataFrame/LazyFrame to Spyder Variable Explorer.
-
-    Parameters
-    ----------
-    df : polars.DataFrame or polars.LazyFrame
-    n : int or None, default 100
-        Number of rows to materialize.
-        If None, materialize all rows.
-    name : str, default "a1_VIEW_DF"
-        Variable name shown in Variable Explorer.
-    """
-    import __main__
-    import polars as pl
-
-    if isinstance(df, pl.LazyFrame):
-        df = df.collect() if n is None else df.head(n).collect()
-    elif n is not None:
-        df = df.head(n)
-
-    setattr(__main__, name, df)
-
-
 def write_excel_polars(file_path, df, sheet_name, mode: str = "raw", table_name: str | None = None):
     """
     Write a Polars DataFrame to an Excel workbook using openpyxl.
@@ -408,9 +384,13 @@ def clean_strings(df, cols=None, normalize: bool = False):
     return df.with_columns(expr)
 
 
-def check_merge(left, right, on=None, left_on=None, right_on=None, view_unmatched: bool = False):
+def check_merge(left, right, on=None, left_on=None, right_on=None):
     """
     Print a Stata-like merge summary for two Polars DataFrames or LazyFrames.
+
+    The merge summary is always printed to the console. Unmatched unique merge
+    keys are printed below the summary and returned as a Polars DataFrame so
+    they can be inspected in full by assigning the function call to a variable.
 
     Notes
     -----
@@ -500,13 +480,16 @@ def check_merge(left, right, on=None, left_on=None, right_on=None, view_unmatche
     print(f"{'Merge type':<24}{merge_type:>14}")
     print()
 
-    if view_unmatched:
-        unmatched = pl.concat(
-            [
-                left_only_df.with_columns(pl.lit("left_only").alias("_merge")),
-                right_only_df.with_columns(pl.lit("right_only").alias("_merge")),
-            ],
-            how="diagonal",
-        )
+    unmatched = pl.concat(
+        [
+            left_only_df.with_columns(pl.lit("left_only").alias("_merge")),
+            right_only_df.with_columns(pl.lit("right_only").alias("_merge")),
+        ],
+        how="diagonal",
+    )
 
-        view(unmatched)
+    print("Unmatched merge keys".center(38))
+    print("-" * 38)
+    print(unmatched)
+
+    return unmatched
