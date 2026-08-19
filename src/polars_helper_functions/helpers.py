@@ -3,6 +3,43 @@
 from __future__ import annotations
 
 
+def trim_memory():
+    """Trim unused pages from the current process's Windows working set.
+
+    This helper is intended for occasional use after a memory-intensive
+    operation whose final result is much smaller than its intermediate data.
+    On non-Windows platforms it is a no-op.
+
+    Raises
+    ------
+    OSError
+        If Windows cannot empty the current process's working set.
+    """
+    import ctypes
+    import gc
+    import os
+    from ctypes import wintypes
+
+    if os.name != "nt":
+        return
+
+    # Release unreachable Python objects before asking Windows to reclaim
+    # unused physical-memory pages from the process working set.
+    gc.collect()
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    psapi = ctypes.WinDLL("psapi", use_last_error=True)
+
+    kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+    psapi.EmptyWorkingSet.argtypes = [wintypes.HANDLE]
+    psapi.EmptyWorkingSet.restype = wintypes.BOOL
+
+    process = kernel32.GetCurrentProcess()
+    if not psapi.EmptyWorkingSet(process):
+        error = ctypes.get_last_error()
+        raise OSError(error, ctypes.FormatError(error))
+
+
 def sample_lazyframe(
     lf,
     n_rows: int,

@@ -8,6 +8,7 @@ Reusable helper utilities for common Polars workflows, including:
 - Cleaning/normalizing string columns
 - Checking merge quality with a Stata-style merge summary
 - Saving/loading Polars schemas to/from JSON for reproducible imports
+- Returning unused working-set memory to Windows after large operations
 
 ## Installation
 
@@ -65,6 +66,9 @@ lf = pl.scan_csv("data/*.csv", infer_schema_length=None)
 phf.save_schema(lf, "intermediate/schema.json", infer_schema_length=None)
 loaded_schema = phf.load_saved_schema("intermediate/schema.json")
 
+# After a memory-intensive operation, ask Windows to release unused pages
+phf.trim_memory()
+
 # Deterministic pseudo-random sample from LazyFrame
 lf_base = pl.scan_parquet("data/base.parquet")
 lf_base_sample = phf.sample_lazyframe(lf_base, n_rows=1_000, seed=42)
@@ -104,6 +108,11 @@ Save a schema, DataFrame, or LazyFrame to a JSON schema file.
 
 ### `load_saved_schema(schema_path)`
 Load a schema JSON file and return a `dict[str, pl.DataType]` usable in Polars `schema=`.
+
+### `trim_memory()`
+Run Python garbage collection and ask Windows to remove unused physical-memory pages
+from the current process's working set. This function is a no-op on other operating
+systems and is intended for occasional use after memory-intensive operations.
 
 ## Development notes
 
