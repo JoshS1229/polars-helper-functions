@@ -9,6 +9,7 @@ from .helpers import (
     save_schema,
     show_unique,
     tab,
+    trim_memory,
     write_excel_polars,
 )
 
@@ -22,4 +23,5 @@ __all__ = [
     "clean_names",
     "clean_strings",
     "check_merge",
+    "trim_memory",
 ]
