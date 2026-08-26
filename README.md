@@ -87,7 +87,12 @@ Show unique values from one or more columns in a `LazyFrame`.
 Create one-way or multi-way frequency tables with proportions.
 
 ### `write_excel_polars(file_path, df, sheet_name, mode="raw", table_name=None)`
-Write a Polars DataFrame to Excel via `openpyxl`.
+
+Writes or replaces a single worksheet. For an existing `.xlsx` file, the
+function edits the worksheet's OOXML part directly instead of loading and
+saving the workbook through openpyxl. This leaves unrelated formulas, array
+formulas, pivot caches, and Excel extension data untouched. `mode="table"`
+writes the output as an Excel table; `mode="raw"` writes ordinary cells.
 
 ### `clean_names(obj)`
 Clean column names into snake_case for a list of names or a DataFrame/LazyFrame.
