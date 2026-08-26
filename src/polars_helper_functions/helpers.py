@@ -287,30 +287,40 @@ def tab(df, col):
 
 def write_excel_polars(file_path, df, sheet_name, mode: str = "raw", table_name: str | None = None):
     """
-    Write a Polars DataFrame to an Excel workbook using openpyxl.
+    Write a Polars DataFrame to one worksheet in an Excel workbook.
 
     - If the workbook does not exist, create it
     - If the sheet exists, replace it
     - mode="raw": write plain cells
     - mode="table": write as an Excel table
+
+    Existing workbooks are edited at the OOXML package level: only the target
+    worksheet (and its table metadata, when requested) is replaced.  Other
+    sheets, formulas, array formulas, pivot caches, and unsupported Excel
+    extensions are copied without being interpreted or rewritten by openpyxl.
     """
     from pathlib import Path
 
-    from openpyxl import Workbook, load_workbook
+    from openpyxl import Workbook
     from openpyxl.utils import get_column_letter
     from openpyxl.worksheet.table import Table
 
+    from ._xlsx import update_xlsx_sheet
+
     file_path = Path(file_path)
 
-    if file_path.exists():
-        wb = load_workbook(file_path)
-    else:
-        wb = Workbook()
-        if "Sheet" in wb.sheetnames:
-            wb.remove(wb["Sheet"])
+    if mode not in {"raw", "table"}:
+        raise ValueError("`mode` must be either 'raw' or 'table'.")
 
-    if sheet_name in wb.sheetnames:
-        wb.remove(wb[sheet_name])
+    if file_path.exists():
+        update_xlsx_sheet(file_path, df, sheet_name, mode, table_name)
+        return
+
+    # openpyxl is retained only for creating a brand-new workbook, where there
+    # cannot yet be any pivot tables or formulas to preserve.
+    wb = Workbook()
+    if "Sheet" in wb.sheetnames:
+        wb.remove(wb["Sheet"])
 
     ws = wb.create_sheet(sheet_name)
     ws.append(df.columns)
