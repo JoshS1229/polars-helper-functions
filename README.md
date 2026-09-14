@@ -9,6 +9,7 @@ Reusable helper utilities for common Polars workflows, including:
 - Checking merge quality with a Stata-style merge summary
 - Saving/loading Polars schemas to/from JSON for reproducible imports
 - Returning unused working-set memory to Windows after large operations
+- Reordering columns with Stata-style front, `before`, or `after` placement
 
 ## Installation
 
@@ -35,6 +36,7 @@ Use the package namespace (`phf`) for **transformation** helpers, and import
 
 ```python
 import polars as pl
+import polars.selectors as cs
 import polars_helper_functions as phf
 from polars_helper_functions import check_merge, sample_lazyframe, show_unique, tab
 ```
@@ -76,6 +78,10 @@ lf_base_sample = phf.sample_lazyframe(lf_base, n_rows=1_000, seed=42)
 # Frequency tables are inspection helpers
 df = pl.DataFrame({"state": ["CA", "CA", "NY"], "segment": ["A", "B", "A"]})
 print(tab(df, ["state", "segment"]))
+
+# Move named columns (or selector matches) without dropping other columns
+ordered = phf.order(df, "segment", cs.starts_with("state"))
+ordered = phf.order(df, "segment", after="state")
 ```
 
 ## API
@@ -118,6 +124,12 @@ Load a schema JSON file and return a `dict[str, pl.DataType]` usable in Polars `
 Run Python garbage collection and ask Windows to remove unused physical-memory pages
 from the current process's working set. This function is a no-op on other operating
 systems and is intended for occasional use after memory-intensive operations.
+
+### `order(df, *columns, before=None, after=None)`
+Move named columns or columns matched by Polars selectors to the front, or place
+them immediately before/after an anchor. Iterables of column names are accepted;
+unspecified columns retain their relative order. Arbitrary computed expressions
+are intentionally not supported because this helper only reorders existing columns.
 
 ## Development notes
 
