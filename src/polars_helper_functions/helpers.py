@@ -2,6 +2,99 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import polars as pl
+
+
+def order(
+    df: pl.DataFrame | pl.LazyFrame,
+    *columns: str | Iterable[str] | pl.Expr,
+    before: str | None = None,
+    after: str | None = None,
+) -> pl.DataFrame | pl.LazyFrame:
+    """Reorder columns while retaining all unspecified columns.
+
+    Column names, iterables of names, and Polars selectors are supported.
+    Requested columns move to the front by default, or immediately before or
+    after an anchor. Duplicate requests use their first requested position.
+
+    Examples
+    --------
+    >>> import polars as pl
+    >>> import polars.selectors as cs
+    >>> df = pl.DataFrame({"a": [1], "b": [2], "c": [3], "d": [4]})
+    >>> order(df, "b", "a").columns
+    ['b', 'a', 'c', 'd']
+    >>> order(df, ["c", "a"], after="b").columns
+    ['b', 'c', 'a', 'd']
+    >>> order(df, cs.numeric()).columns
+    ['a', 'b', 'c', 'd']
+    """
+    import polars as pl
+    import polars.selectors as cs
+
+    if not isinstance(df, (pl.DataFrame, pl.LazyFrame)):
+        raise TypeError("`df` must be a polars.DataFrame or polars.LazyFrame.")
+    if before is not None and after is not None:
+        raise ValueError("Only one of `before` or `after` may be supplied.")
+
+    available = (
+        df.columns if isinstance(df, pl.DataFrame) else df.collect_schema().names()
+    )
+    available_set = set(available)
+    requested: list[str] = []
+    seen: set[str] = set()
+
+    def add(spec: object) -> None:
+        if isinstance(spec, str):
+            names = (spec,)
+        elif cs.is_selector(spec):
+            names = cs.expand_selector(df, spec)
+        elif isinstance(spec, Iterable):
+            for item in spec:
+                if not isinstance(item, str):
+                    raise TypeError(
+                        "Column iterables passed to `order` must contain only strings."
+                    )
+                add(item)
+            return
+        else:
+            raise TypeError(
+                "Column specifications must be names, iterables of names, "
+                "or Polars selectors."
+            )
+
+        for name in names:
+            if name not in available_set:
+                raise ValueError(f"Column not found in input: {name}")
+            if name not in seen:
+                requested.append(name)
+                seen.add(name)
+
+    for specification in columns:
+        add(specification)
+
+    anchor = before if before is not None else after
+    if anchor is not None:
+        if not isinstance(anchor, str):
+            raise TypeError("`before` and `after` must be column names.")
+        if anchor not in available_set:
+            raise ValueError(f"Anchor column not found in input: {anchor}")
+        if anchor in seen:
+            raise ValueError("The anchor column cannot also be reordered.")
+
+    remaining = [name for name in available if name not in seen]
+    if anchor is None:
+        ordered = requested + remaining
+    else:
+        position = remaining.index(anchor) + (after is not None)
+        ordered = remaining[:position] + requested + remaining[position:]
+
+    return df.select(ordered)
+
 
 def trim_memory():
     """Trim unused pages from the current process's Windows working set.

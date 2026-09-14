@@ -5,6 +5,7 @@ from .helpers import (
     clean_names,
     clean_strings,
     load_saved_schema,
+    order,
     sample_lazyframe,
     save_schema,
     show_unique,
@@ -24,4 +25,5 @@ __all__ = [
     "clean_strings",
     "check_merge",
     "trim_memory",
+    "order",
 ]
