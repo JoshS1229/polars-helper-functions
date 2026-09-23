@@ -10,6 +10,7 @@ Reusable helper utilities for common Polars workflows, including:
 - Saving/loading Polars schemas to/from JSON for reproducible imports
 - Returning unused working-set memory to Windows after large operations
 - Reordering columns with Stata-style front, `before`, or `after` placement
+- Timing operations with concise, reusable start/end helpers
 
 ## Installation
 
@@ -82,6 +83,16 @@ print(tab(df, ["state", "segment"]))
 # Move named columns (or selector matches) without dropping other columns
 ordered = phf.order(df, "segment", cs.starts_with("state"))
 ordered = phf.order(df, "segment", after="state")
+
+# Time an operation; timer_end also returns the elapsed seconds
+start = phf.timer_start("Merge FMIS")
+# ... merge data ...
+elapsed_seconds = phf.timer_end(start)
+
+# Descriptions are optional
+start = phf.timer_start()
+# ... do work ...
+elapsed_seconds = phf.timer_end(start)
 ```
 
 ## API
@@ -130,6 +141,11 @@ Move named columns or columns matched by Polars selectors to the front, or place
 them immediately before/after an anchor. Iterables of column names are accepted;
 unspecified columns retain their relative order. Arbitrary computed expressions
 are intentionally not supported because this helper only reorders existing columns.
+
+### `timer_start(description=None)` / `timer_end(start)`
+Start a timer using `time.perf_counter()`, then print the elapsed time in seconds or
+minutes/seconds. Pass the value returned by `timer_start()` to `timer_end()`; no global
+state is used. `timer_end()` also returns the elapsed number of seconds as a float.
 
 ## Development notes
 

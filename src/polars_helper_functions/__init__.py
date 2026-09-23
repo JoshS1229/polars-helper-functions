@@ -10,6 +10,8 @@ from .helpers import (
     save_schema,
     show_unique,
     tab,
+    timer_end,
+    timer_start,
     trim_memory,
     write_excel_polars,
 )
@@ -24,6 +26,8 @@ __all__ = [
     "clean_names",
     "clean_strings",
     "check_merge",
+    "timer_start",
+    "timer_end",
     "trim_memory",
     "order",
 ]
