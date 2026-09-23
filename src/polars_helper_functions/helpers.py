@@ -2,11 +2,67 @@
 
 from __future__ import annotations
 
+import time
 from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     import polars as pl
+
+
+def timer_start(description: str | None = None) -> tuple[float, str | None]:
+    """Start a timer and optionally record what is being timed.
+
+    Pass the returned value directly to :func:`timer_end`.
+
+    Examples
+    --------
+    >>> start = timer_start("Merge FMIS")
+    >>> # ... merge data ...
+    >>> elapsed = timer_end(start)  # doctest: +SKIP
+    Merged FMIS Elapsed Time: 12.43 seconds
+    """
+    if description is not None and not isinstance(description, str):
+        raise TypeError("`description` must be a string or None.")
+
+    return time.perf_counter(), description
+
+
+def timer_end(start: tuple[float, str | None]) -> float:
+    """Stop a timer, print its elapsed time, and return the seconds elapsed.
+
+    Durations under a minute are displayed in seconds. Longer durations are
+    displayed as minutes and seconds. A description's first word is changed
+    from a simple command ending (for example, ``Merge``) to a completed one
+    (``Merged``).
+
+    Examples
+    --------
+    >>> start = timer_start()
+    >>> elapsed = timer_end(start)  # doctest: +SKIP
+    Elapsed Time: 12.43 seconds
+    >>> start = timer_start("Merge FMIS")
+    >>> elapsed = timer_end(start)  # doctest: +SKIP
+    Merged FMIS Elapsed Time: 1 minute 5.43 seconds
+    """
+    started_at, description = start
+    elapsed = time.perf_counter() - started_at
+
+    if elapsed < 60:
+        duration = f"{elapsed:.2f} seconds"
+    else:
+        minutes, seconds = divmod(elapsed, 60)
+        unit = "minute" if int(minutes) == 1 else "minutes"
+        duration = f"{int(minutes)} {unit} {seconds:.2f} seconds"
+
+    prefix = ""
+    if description:
+        first_word, separator, remainder = description.partition(" ")
+        completed_word = first_word + ("d" if first_word.endswith("e") else "ed")
+        prefix = f"{completed_word}{separator}{remainder} "
+
+    print(f"{prefix}Elapsed Time: {duration}")
+    return elapsed
 
 
 def order(
