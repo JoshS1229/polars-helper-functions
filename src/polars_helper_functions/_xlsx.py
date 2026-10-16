@@ -12,6 +12,7 @@ import math
 import os
 import re
 import tempfile
+import time as _time
 from datetime import date, datetime, time, timedelta
 from itertools import chain
 from pathlib import Path, PurePosixPath
@@ -119,6 +120,24 @@ def _table_xml(df, table_name: str, table_id: int) -> bytes:
     return ET.tostring(root, encoding="utf-8", xml_declaration=True)
 
 
+def _replace_workbook(temporary: str, file_path: Path) -> None:
+    """Allow brief Windows/network-share locks to clear without rewriting data."""
+    for attempt in range(6):
+        try:
+            os.replace(temporary, file_path)
+            return
+        except PermissionError as error:
+            if attempt == 5:
+                raise PermissionError(
+                    error.errno,
+                    f"Cannot replace Excel workbook after 6 attempts. Close the "
+                    f"workbook in Excel and check write/delete permissions on the "
+                    f"file and its folder. The existing workbook was not replaced.",
+                    str(file_path),
+                ) from error
+            _time.sleep(0.1 * 2 ** attempt)
+
+
 def update_xlsx_sheet(file_path: Path, df, sheet_name: str, mode: str, table_name: str | None) -> None:
     """Replace one worksheet part while copying every other ZIP part unchanged."""
     replacements: dict[str, bytes | None] = {}
@@ -177,6 +196,6 @@ def update_xlsx_sheet(file_path: Path, df, sheet_name: str, mode: str, table_nam
             # Close the source before atomically replacing it.  This matters
             # on Windows, where replacing an open file can fail.
             source.close()
-            os.replace(temporary, file_path)
+            _replace_workbook(temporary, file_path)
         finally:
             Path(temporary).unlink(missing_ok=True)
