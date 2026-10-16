@@ -111,6 +111,12 @@ saving the workbook through openpyxl. This leaves unrelated formulas, array
 formulas, pivot caches, and Excel extension data untouched. `mode="table"`
 writes the output as an Excel table; `mode="raw"` writes ordinary cells.
 
+On Windows and network shares, replacement is retried up to six times over
+3.1 seconds if access is temporarily denied. Keep the workbook closed in Excel
+while writing. If access remains denied, the function raises `PermissionError`
+with guidance and leaves the existing workbook unchanged; earlier successful
+sheet writes remain saved. Sheet names beginning with `N` need no special handling.
+
 ### `clean_names(obj)`
 Clean column names into snake_case for a list of names or a DataFrame/LazyFrame.
 
