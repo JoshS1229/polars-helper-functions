@@ -16,6 +16,7 @@ import time as _time
 from datetime import date, datetime, time, timedelta
 from itertools import chain
 from pathlib import Path, PurePosixPath
+from xml.dom import minidom
 from xml.etree import ElementTree as ET
 from zipfile import ZIP_DEFLATED, ZipFile
 
@@ -26,9 +27,85 @@ _PKG_REL = "http://schemas.openxmlformats.org/package/2006/relationships"
 _CONTENT = "http://schemas.openxmlformats.org/package/2006/content-types"
 _SHEET_REL = f"{_REL}/worksheet"
 _TABLE_REL = f"{_REL}/table"
+_STYLES_REL = f"{_REL}/styles"
 
 ET.register_namespace("", _MAIN)
 ET.register_namespace("r", _REL)
+
+
+def _temporal_formats(df) -> dict[int, str]:
+    """Use declared column types, including columns containing only nulls."""
+    import polars as pl
+
+    for name, dtype in df.schema.items():
+        if isinstance(dtype, pl.Datetime) and dtype.time_zone is not None:
+            raise ValueError(
+                f"Excel does not support time zones: column {name!r}. "
+                "Convert to the desired time zone and remove the time zone before export."
+            )
+
+    return {
+        index: "yyyy-mm-dd" if dtype == pl.Date else "yyyy-mm-dd hh:mm:ss"
+        for index, dtype in enumerate(df.schema.values(), 1)
+        if dtype == pl.Date or isinstance(dtype, pl.Datetime)
+    }
+
+
+def _date_styles(styles_xml: bytes, formats) -> tuple[bytes, dict[str, int]]:
+    # DOM retains namespace prefixes and extension declarations in existing
+    # styles, including those referenced by mc:Ignorable attributes.
+    document = minidom.parseString(styles_xml)
+    root = document.documentElement
+
+    def children(node, name):
+        return [c for c in node.childNodes if c.nodeType == c.ELEMENT_NODE
+                and c.namespaceURI == _MAIN and c.localName == name]
+
+    def element(name, **attributes):
+        qualified = f"{root.prefix}:{name}" if root.prefix else name
+        node = document.createElementNS(_MAIN, qualified)
+        for key, value in attributes.items():
+            node.setAttribute(key, str(value))
+        return node
+
+    num_fmts = next(iter(children(root, "numFmts")), None)
+    if num_fmts is None:
+        num_fmts = element("numFmts", count=0)
+        root.insertBefore(num_fmts, root.firstChild)
+    cell_xfs = next(iter(children(root, "cellXfs")), None)
+    if cell_xfs is None:
+        cell_xfs = element("cellXfs", count=1)
+        cell_xfs.appendChild(element("xf", numFmtId=0))
+        following = next((c for c in root.childNodes
+                          if c.nodeType == c.ELEMENT_NODE and c.localName in
+                          {"cellStyles", "dxfs", "tableStyles", "colors", "extLst"}), None)
+        root.insertBefore(cell_xfs, following)
+
+    from openpyxl.styles.numbers import BUILTIN_FORMATS
+
+    known = dict(BUILTIN_FORMATS)
+    known.update({int(n.getAttribute("numFmtId")): n.getAttribute("formatCode")
+                  for n in children(num_fmts, "numFmt")})
+    result = {}
+    for code in dict.fromkeys(formats):
+        number = next((i for i, fmt in known.items() if fmt == code), None)
+        if number is None:
+            number = max(163, *known) + 1
+            num_fmts.appendChild(element("numFmt", numFmtId=number, formatCode=code))
+            known[number] = code
+        xfs = children(cell_xfs, "xf")
+        index = next((i for i, xf in enumerate(xfs)
+                      if xf.getAttribute("numFmtId") == str(number)
+                      and xf.getAttribute("applyNumberFormat") != "0"
+                      and set(xf.attributes.keys()) <= {"numFmtId", "applyNumberFormat"}
+                      and not xf.hasChildNodes()), None)
+        if index is None:
+            index = len(xfs)
+            cell_xfs.appendChild(element("xf", numFmtId=number, applyNumberFormat=1))
+        result[code] = index
+    num_fmts.setAttribute("count", str(len(children(num_fmts, "numFmt"))))
+    cell_xfs.setAttribute("count", str(len(children(cell_xfs, "xf"))))
+    return document.toxml(encoding="utf-8"), result
 
 
 def _column_name(number: int) -> str:
@@ -60,8 +137,8 @@ def _xml_cell(parent, row: int, column: int, value) -> None:
             value.total_seconds() / 86_400
         )
     elif isinstance(value, (datetime, date, time)):
-        # ISO dates are understood by modern Excel and avoid mutating the
-        # workbook's shared style table merely to add a date number format.
+        # ISO date cells preserve the value independently of the workbook's
+        # 1900/1904 epoch. The worksheet writer assigns their display styles.
         cell.set("t", "d")
         ET.SubElement(cell, f"{{{_MAIN}}}v").text = value.isoformat()
     else:
@@ -74,13 +151,15 @@ def _xml_cell(parent, row: int, column: int, value) -> None:
         text.text = string
 
 
-def _worksheet_xml(df, table_relationship_id: str | None = None) -> bytes:
+def _worksheet_xml(df, table_relationship_id: str | None = None, column_styles=None) -> bytes:
     root = ET.Element(f"{{{_MAIN}}}worksheet")
     data = ET.SubElement(root, f"{{{_MAIN}}}sheetData")
     for row_number, values in enumerate(chain((df.columns,), df.iter_rows()), 1):
         row = ET.SubElement(data, f"{{{_MAIN}}}row", r=str(row_number))
         for column, value in enumerate(values, 1):
             _xml_cell(row, row_number, column, value)
+            if row_number > 1 and column_styles and column in column_styles:
+                row[-1].set("s", str(column_styles[column]))
     if table_relationship_id:
         parts = ET.SubElement(root, f"{{{_MAIN}}}tableParts", count="1")
         ET.SubElement(parts, f"{{{_MAIN}}}tablePart", {f"{{{_REL}}}id": table_relationship_id})
@@ -180,7 +259,34 @@ def update_xlsx_sheet(file_path: Path, df, sheet_name: str, mode: str, table_nam
             ET.SubElement(content_types, f"{{{_CONTENT}}}Override", PartName=f"/{table_path}", ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.table+xml")
             replacements["[Content_Types].xml"] = ET.tostring(content_types, encoding="utf-8", xml_declaration=True)
 
-        replacements[sheet_path] = _worksheet_xml(df, table_rel_id)
+        column_formats = _temporal_formats(df)
+        column_styles = {}
+        if column_formats:
+            style_relation = next((r for r in workbook_rels if r.get("Type") == _STYLES_REL), None)
+            if style_relation is None:
+                styles_path = "xl/styles.xml"
+                ET.SubElement(workbook_rels, f"{{{_PKG_REL}}}Relationship",
+                              Id=_next_id(r.get("Id") for r in workbook_rels),
+                              Type=_STYLES_REL, Target="styles.xml")
+                replacements["xl/_rels/workbook.xml.rels"] = ET.tostring(workbook_rels, encoding="utf-8", xml_declaration=True)
+                content_types = ET.fromstring(replacements.get("[Content_Types].xml") or source.read("[Content_Types].xml"))
+                ET.SubElement(content_types, f"{{{_CONTENT}}}Override", PartName=f"/{styles_path}",
+                              ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml")
+                replacements["[Content_Types].xml"] = ET.tostring(content_types, encoding="utf-8", xml_declaration=True)
+                # A styles part is optional. Create Excel's normal base styles
+                # before adding date formats, without loading the workbook.
+                from openpyxl import Workbook
+                from openpyxl.styles.stylesheet import write_stylesheet
+                from openpyxl.xml.functions import tostring
+
+                styles_xml = tostring(write_stylesheet(Workbook()))
+            else:
+                styles_path = _resolve("xl/workbook.xml", style_relation.get("Target"))
+                styles_xml = source.read(styles_path)
+            replacements[styles_path], style_ids = _date_styles(styles_xml, column_formats.values())
+            column_styles = {column: style_ids[code] for column, code in column_formats.items()}
+
+        replacements[sheet_path] = _worksheet_xml(df, table_rel_id, column_styles)
         fd, temporary = tempfile.mkstemp(dir=file_path.parent, suffix=".xlsx")
         os.close(fd)
         try:

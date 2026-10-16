@@ -111,6 +111,14 @@ saving the workbook through openpyxl. This leaves unrelated formulas, array
 formulas, pivot caches, and Excel extension data untouched. `mode="table"`
 writes the output as an Excel table; `mode="raw"` writes ordinary cells.
 
+Polars `Date` columns display as `yyyy-mm-dd`, and `Datetime` columns display
+as `yyyy-mm-dd hh:mm:ss`, in both modes and when creating, adding, or replacing
+sheets. Values remain Excel date/datetime cells, including the time component;
+typed null cells receive the same column format. String columns are not inferred
+as dates. Existing style definitions retain their indices when date formats are
+added. Excel cannot represent time zones: convert timezone-aware columns to the
+desired zone, then use `.dt.replace_time_zone(None)` before exporting.
+
 On Windows and network shares, replacement is retried up to six times over
 3.1 seconds if access is temporarily denied. Keep the workbook closed in Excel
 while writing. If access remains denied, the function raises `PermissionError`

@@ -442,9 +442,11 @@ def write_excel_polars(file_path, df, sheet_name, mode: str = "raw", table_name:
     - If the sheet exists, replace it
     - mode="raw": write plain cells
     - mode="table": write as an Excel table
+    - Date/Datetime columns use Excel date/datetime number formats
 
     Existing workbooks are edited at the OOXML package level: only the target
-    worksheet (and its table metadata, when requested) is replaced.  Other
+    worksheet (and its table metadata, when requested) is replaced, and date
+    number formats are added to the shared styles as needed. Other
     sheets, formulas, array formulas, pivot caches, and unsupported Excel
     extensions are copied without being interpreted or rewritten by openpyxl.
     """
@@ -454,12 +456,14 @@ def write_excel_polars(file_path, df, sheet_name, mode: str = "raw", table_name:
     from openpyxl.utils import get_column_letter
     from openpyxl.worksheet.table import Table
 
-    from ._xlsx import update_xlsx_sheet
+    from ._xlsx import _temporal_formats, update_xlsx_sheet
 
     file_path = Path(file_path)
 
     if mode not in {"raw", "table"}:
         raise ValueError("`mode` must be either 'raw' or 'table'.")
+
+    column_formats = _temporal_formats(df)
 
     if file_path.exists():
         update_xlsx_sheet(file_path, df, sheet_name, mode, table_name)
@@ -476,6 +480,10 @@ def write_excel_polars(file_path, df, sheet_name, mode: str = "raw", table_name:
 
     for row in df.iter_rows():
         ws.append(row)
+
+    for column, number_format in column_formats.items():
+        for row in range(2, df.height + 2):
+            ws.cell(row, column).number_format = number_format
 
     if mode == "table":
         if table_name is None:
